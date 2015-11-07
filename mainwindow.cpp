@@ -1,13 +1,12 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 
-#include <math.h>
-
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    ui->treeWidget->setColumnCount(3);
 }
 
 MainWindow::~MainWindow()
@@ -76,9 +75,10 @@ void MainWindow::on_pushButton_2_clicked()
 
 void MainWindow::on_pushButton_3_clicked()
 {
-     qint64 colCount = 0, rowCount = 0, i;
-     QString receiveFileName;
-     QString itemText;
+     int i, j, rowCount = 0, colCount = 0;
+     QString receiveFileName, itemText, stateText;
+     QStringList itemTexts;
+
      char readData[1024];
 
      /*打开文件*/
@@ -105,6 +105,10 @@ void MainWindow::on_pushButton_3_clicked()
 
                 /*写入条目*/
                 QTableWidgetItem *newItem = new QTableWidgetItem(itemText);
+
+                if(itemText == "NONE")
+                    newItem->setTextColor(Qt::red);
+
                 ui->tableWidget->setItem(rowCount, colCount, newItem);
 
                 itemText.clear();
@@ -121,4 +125,118 @@ void MainWindow::on_pushButton_3_clicked()
 
     receiveFile.close();
     ui->statusBar->showMessage(tr("文件已关闭"));
+
+    /*生成状态树*/
+    QList<QTreeWidgetItem*> topItem;
+
+    itemTexts = findState(ui->tableWidget);
+
+    for(i = 0; i < itemTexts.length(); i++)
+        topItem.append(new QTreeWidgetItem((QTreeWidget*)0, QStringList(itemTexts.at(i))));
+
+    ui->treeWidget->insertTopLevelItems(0, topItem);
+
+    itemTexts.clear();
+
+    for(i = 0; i < ui->treeWidget->topLevelItemCount(); i++)
+    {
+        QList<QTreeWidgetItem*> eventItems;
+
+        stateText = ui->treeWidget->topLevelItem(i)->text(0);
+
+        itemTexts = findEventOfState(ui->tableWidget, stateText);
+
+        for(j = 0; j < itemTexts.length(); j++)
+        {
+            QList<QTreeWidgetItem*> guardItems;
+
+            eventItems.append(new QTreeWidgetItem((QTreeWidget*)0, QStringList(itemTexts.at(j))));
+
+            guardItems = findGuardOfEvent(ui->tableWidget, itemTexts.at(j), stateText);
+
+            /*for(k = 0; k < guardTexts.length(); k++)
+            {
+                guardItems.append(new QTreeWidgetItem((QTreeWidget*)0, QStringList(guardTexts.at(k))));
+            }*/
+
+            eventItems.at(j)->addChildren(guardItems);
+        }
+
+        ui->treeWidget->topLevelItem(i)->addChildren(eventItems);
+    }
+
+
+}
+
+QStringList MainWindow::findState(QTableWidget *table)
+{
+    QStringList states;
+    QString itemText;
+    int rowCount, i;
+
+    /*获取行数*/
+    rowCount = table->rowCount();
+
+    /*获取第一个状态*/
+    itemText = table->item(0, STATE_COL)->text();
+    states.append(itemText);
+
+    /*获取之后的状态*/
+    for(i = 1; i < rowCount; i++)
+    {
+        if(table->item(i, STATE_COL)->text() != itemText)
+        {
+           itemText = table->item(i, STATE_COL)->text();
+           states.append(itemText);
+        }
+    }
+
+    return states;
+}
+
+QStringList MainWindow::findEventOfState(QTableWidget* table, QString state)
+{
+    int rowCount, i;
+    QStringList events;
+    QString itemText;
+
+    rowCount = table->rowCount();
+
+    for(i = 0; i < rowCount; i++)
+    {
+        if(table->item(i, STATE_COL)->text() == state)
+        {
+            if(itemText != table->item(i, EVENT_COL)->text())
+            {
+                   itemText = table->item(i, EVENT_COL)->text();
+                   events.append(itemText);
+            }
+        }
+    }
+
+    return events;
+}
+
+QList<QTreeWidgetItem*> MainWindow::findGuardOfEvent(QTableWidget* table, QString event, QString state)
+{
+    int rowCount, i;
+    QList<QTreeWidgetItem*> guards;
+    QString itemText;
+
+    rowCount = table->rowCount();
+
+    for(i = 0; i < rowCount; i++)
+    {
+        if((table->item(i, STATE_COL)->text() == state) && (table->item(i, EVENT_COL)->text() == event))
+        {
+            if(itemText != table->item(i, GUARD_COL)->text())
+            {
+                   guards.append(new QTreeWidgetItem((QTreeWidget*)0, QStringList(table->item(i, GUARD_COL)->text())));
+                   guards.at(guards.length()-1)->setText(1, table->item(i, NSTATE_COL)->text());
+                   guards.at(guards.length()-1)->setText(2, table->item(i, ACTION_COL)->text());
+            }
+        }
+    }
+
+    return guards;
 }
