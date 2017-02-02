@@ -12,6 +12,10 @@
 #include <QTableWidget>
 #include <QTableWidgetItem>
 
+#include "projectdialog.h"
+#include "variabledialog.h"
+#include "statemodel.h"
+
 namespace Ui {
 class MainWindow;
 }
@@ -37,13 +41,29 @@ private slots:
 
     void on_pushButton_3_clicked();
 
+    void on_pushButton_4_clicked();
+
+    void on_pushButton_6_clicked();
+
+    void on_pushButton_5_clicked();
+
 private:
     Ui::MainWindow *ui;
     QFile receiveFile;
 
+    ProjectDialog* project_dialog;
+    VariableDialog* var_dialog;
+
     QStringList findState(QTableWidget* table);
     QStringList findEventOfState(QTableWidget* table, QString state);
     QList<QTreeWidgetItem *> findGuardOfEvent(QTableWidget* table, QString event, QString state);
+    QStringList findAllEvent(QTableWidget* table);
+    QStringList getAllState(QTableWidget* table);
+
+    QString projectName;
+    StateModel* state_model;
+
+
 };
 
 #endif // MAINWINDOW_H

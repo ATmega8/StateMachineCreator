@@ -1,12 +1,30 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 
+#include "codegenerate.h"
+
+#include "statemodel.h"
+
+#include <QMessageBox>
+#include <QFile>
+#include <QFileDialog>
+
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
 {
+    QStringList headers;
+    headers << "State" << "Event" << "Condition" << "Action" << "Next State";
+
     ui->setupUi(this);
-    ui->treeWidget->setColumnCount(3);
+    ui->treeView->setColumnWidth(0, 200);
+    ui->treeView->setColumnWidth(1, 92);
+    ui->treeView->setColumnWidth(2, 92);
+
+    state_model = new StateModel(headers);
+
+    project_dialog = new ProjectDialog();
+    var_dialog = new VariableDialog();
 }
 
 MainWindow::~MainWindow()
@@ -83,7 +101,7 @@ void MainWindow::on_pushButton_3_clicked()
 
      /*打开文件*/
      receiveFileName = QFileDialog::getOpenFileName(this,
-        tr("Open Receive File"), "/home/life", tr("Any files(*)"));
+        tr("Open Receive File"), "/home/life", tr("Text files(*.dat)"));
 
      receiveFile.setFileName(receiveFileName);
 
@@ -127,45 +145,19 @@ void MainWindow::on_pushButton_3_clicked()
     ui->statusBar->showMessage(tr("文件已关闭"));
 
     /*生成状态树*/
-    QList<QTreeWidgetItem*> topItem;
+    rowCount = ui->tableWidget->rowCount();
 
-    itemTexts = findState(ui->tableWidget);
-
-    for(i = 0; i < itemTexts.length(); i++)
-        topItem.append(new QTreeWidgetItem((QTreeWidget*)0, QStringList(itemTexts.at(i))));
-
-    ui->treeWidget->insertTopLevelItems(0, topItem);
-
-    itemTexts.clear();
-
-    for(i = 0; i < ui->treeWidget->topLevelItemCount(); i++)
+    for(j = 0; j < rowCount; j++)
     {
-        QList<QTreeWidgetItem*> eventItems;
-
-        stateText = ui->treeWidget->topLevelItem(i)->text(0);
-
-        itemTexts = findEventOfState(ui->tableWidget, stateText);
-
-        for(j = 0; j < itemTexts.length(); j++)
-        {
-            QList<QTreeWidgetItem*> guardItems;
-
-            eventItems.append(new QTreeWidgetItem((QTreeWidget*)0, QStringList(itemTexts.at(j))));
-
-            guardItems = findGuardOfEvent(ui->tableWidget, itemTexts.at(j), stateText);
-
-            /*for(k = 0; k < guardTexts.length(); k++)
-            {
-                guardItems.append(new QTreeWidgetItem((QTreeWidget*)0, QStringList(guardTexts.at(k))));
-            }*/
-
-            eventItems.at(j)->addChildren(guardItems);
-        }
-
-        ui->treeWidget->topLevelItem(i)->addChildren(eventItems);
+        QString s = ui->tableWidget->item(j, 0)->text();
+        QString e = ui->tableWidget->item(j, 1)->text();
+        QString c = ui->tableWidget->item(j, 2)->text();
+        QString a = ui->tableWidget->item(j, 4)->text();
+        QString n = ui->tableWidget->item(j, 3)->text();
+        state_model->insertTransition(s, e, c, a, n);
     }
 
-
+    ui->treeView->setModel(state_model);
 }
 
 QStringList MainWindow::findState(QTableWidget *table)
@@ -229,14 +221,86 @@ QList<QTreeWidgetItem*> MainWindow::findGuardOfEvent(QTableWidget* table, QStrin
     {
         if((table->item(i, STATE_COL)->text() == state) && (table->item(i, EVENT_COL)->text() == event))
         {
-            if(itemText != table->item(i, GUARD_COL)->text())
-            {
-                   guards.append(new QTreeWidgetItem((QTreeWidget*)0, QStringList(table->item(i, GUARD_COL)->text())));
-                   guards.at(guards.length()-1)->setText(1, table->item(i, NSTATE_COL)->text());
-                   guards.at(guards.length()-1)->setText(2, table->item(i, ACTION_COL)->text());
-            }
+            guards.append(new QTreeWidgetItem((QTreeWidget*)0, QStringList(table->item(i, GUARD_COL)->text())));
+            guards.at(guards.length()-1)->setText(1, table->item(i, NSTATE_COL)->text());
+            guards.at(guards.length()-1)->setTextColor(1, QColor::fromRgb(128, 0, 128)); /*紫色*/
+            guards.at(guards.length()-1)->setText(2, table->item(i, ACTION_COL)->text());
         }
     }
 
     return guards;
+}
+
+QStringList MainWindow::findAllEvent(QTableWidget* table)
+{
+    QStringList allEvent;
+    QString itemText;
+
+    int i;
+
+    for(i = 0; i < table->rowCount(); i++)
+    {
+        if(table->item(i, EVENT_COL)->text() != "NONE")
+        {
+            if(allEvent.indexOf(table->item(i, EVENT_COL)->text()) == -1)
+                allEvent.append(table->item(i, EVENT_COL)->text());
+        }
+    }
+
+    return allEvent;
+}
+
+void MainWindow::on_pushButton_4_clicked()
+{
+    QFileDialog dialog;
+    QFile       file;
+    QString fileName;
+
+    if(projectName.isEmpty())
+    {
+        QMessageBox::critical(this, tr("NOT PROJECT NAME"),
+                              tr("Please set a projecr name"), QMessageBox::Ok, QMessageBox::Ok);
+        return;
+    }
+    else
+    {
+            fileName = dialog.getExistingDirectory(this,
+                tr("Open Receive File Directory"), "/home/life", QFileDialog::ShowDirsOnly);
+
+            file.setFileName(fileName+"/"+projectName.toLower()+".h");
+
+            file.open(QIODevice::WriteOnly);
+
+            CodeGenerate* codeG = new CodeGenerate();
+
+            codeG->generateHeadFile(&file, projectName, this->findAllEvent(ui->tableWidget),
+                                    this->findState(ui->tableWidget), var_dialog->stateVariable());
+
+            file.close();
+
+            file.setFileName(fileName+"/"+projectName.toLower()+".c");
+
+            file.open(QIODevice::WriteOnly);
+
+            codeG->generateSourceFile(&file, projectName, state_model);
+    }
+}
+
+void MainWindow::on_pushButton_6_clicked()
+{
+   if(project_dialog->exec() == true)
+   {
+        if(!(project_dialog->getProjectName().isEmpty()))
+        {
+            projectName = project_dialog->getProjectName();
+        }
+   }
+}
+
+void MainWindow::on_pushButton_5_clicked()
+{
+    if(var_dialog->exec() == true)
+    {
+        var_dialog->stateVariable();
+    }
 }
